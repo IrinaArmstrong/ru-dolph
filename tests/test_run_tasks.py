@@ -11,7 +11,7 @@ from rudolph.model import get_rudolph_model, ruDolphModel
 from rudolph.api import ruDolphApi
 
 
-class TestInputsEncoding(unittest.TestCase):
+class TestRunTasks(unittest.TestCase):
 
     def __init__(self, method_name="runTest"):
         super().__init__(method_name)
@@ -31,7 +31,8 @@ class TestInputsEncoding(unittest.TestCase):
             generations_num=48,
             captions_num=1,
             seed=42,
-            l_special_token='<LT_UNK>'
+            l_special_token='<LT_UNK>',
+            r_special_token='<RT_UNK>'
         )
 
         for sample in result:

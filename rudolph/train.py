@@ -6,12 +6,12 @@ from catalyst.data import BalanceClassSampler, DistributedSamplerWrapper
 from torch.utils.data import DataLoader
 from rudalle import get_tokenizer, get_vae
 
-from src.rudolph.model import get_rudolph_model, ruDolphModel, FP16Module
-from src.rudolph import utils
+from rudolph.model import get_rudolph_model, ruDolphModel, FP16Module
+from rudolph import utils
 
-from src.train.dataloader import DatasetRetriever, fb_collate_fn
-from src.train.trainer import RudolphLightning
-from src.train.utils import create_dataset
+from train.train_dataloader import TrainDatasetRetriever, fb_collate_fn
+from train.trainer import RudolphLightning
+from train.utils import create_dataset
 
 from omegaconf import OmegaConf
 import argparse
@@ -57,7 +57,7 @@ def main(conf):
           **conf.trainer.pl_trainer
     )
     
-    train_dataset = DatasetRetriever(
+    train_dataset = TrainDatasetRetriever(
         task_ids=df_train['task_id'].values,
         left_texts=df_train['left_text'].values,
         image_paths=df_train['image_path'].values,
@@ -85,7 +85,7 @@ def main(conf):
     )
 
 
-    val_dataset = DatasetRetriever(
+    val_dataset = TrainDatasetRetriever(
         task_ids=df_val['task_id'].values,
         left_texts=df_val['left_text'].values,
         image_paths=df_val['image_path'].values,

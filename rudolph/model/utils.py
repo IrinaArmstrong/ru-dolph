@@ -44,17 +44,38 @@ def split_tensor_along_last_dim(tensor, num_partitions, contiguous_split_chunks=
 
 
 def init_method_normal(std=0.02):
-    """Init method based on normal distribution.
+    """
+    Init method based on normal distribution.
 
     This is only used for embeddings. The transformer has its
     own initializer.
     """
+
     def init_(tensor):
         return torch.nn.init.normal_(tensor, mean=0.0, std=std)
+
     return init_
 
 
-def get_attention_mask(bs, l_text_tokens, image_tokens_per_dim, r_text_tokens, device):
-    total_seq_length = l_text_tokens + image_tokens_per_dim*image_tokens_per_dim + r_text_tokens
-    attention_mask = torch.tril(torch.ones((bs, 1, total_seq_length, total_seq_length), device=device))
+def get_attention_mask(bs, l_text_tokens, image_tokens_per_dim,
+                       r_text_tokens,
+                       device):
+    total_seq_length = l_text_tokens \
+                       + image_tokens_per_dim * image_tokens_per_dim \
+                       + r_text_tokens
+    attention_mask = torch.tril(torch.ones((bs, 1, total_seq_length, total_seq_length),
+                                           device=device))
+    return attention_mask
+
+
+def get_vqa_attention_mask(bs, l_text_tokens,
+                           image_tokens_per_dim,
+                           r_text_tokens,
+                           device):
+    total_seq_length = l_text_tokens \
+                       + image_tokens_per_dim * image_tokens_per_dim \
+                       + r_text_tokens
+    attention_mask = torch.tril(torch.ones((bs, 1, total_seq_length, total_seq_length),
+                                           device=device))
+    attention_mask[:, :, :, :l_text_tokens] = 1
     return attention_mask
