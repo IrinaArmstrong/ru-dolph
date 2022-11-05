@@ -113,44 +113,57 @@ class ruDolphModel(torch.nn.Module):
         lt_loss_weight=1,
         img_loss_weight=7,
         rt_loss_weight=1,
+        sp_loss_weight=0,  # special tokens loss weight
         return_hidden_states=False,
     ):
         device = input_ids.device
-        l_text = input_ids[:, :self.l_text_seq_length]
-        l_text_range = torch.arange(l_text.shape[1])
-        l_text_range += (self.vocab_size - self.l_text_seq_length)
+        l_text = input_ids[:, :self.l_text_seq_length]  # of size: [bs, 64]
+        l_text_range = torch.arange(l_text.shape[1])  # [0, 1, 2, 3 ..., 63], of size: [64,]
+        l_text_range += (self.vocab_size - self.l_text_seq_length)  # += (16832 - 64) => [16768, 16769, ..., 16831]
         l_text_range = l_text_range.to(device)
+        # if PAD token on i position -> replace it with range at same position i
         l_text = torch.where(l_text == 0, l_text_range, l_text)
+        # get positional embeddings
         l_text_pos = self.l_text_pos_embeddings(torch.arange(l_text.shape[1], device=device))
-        l_text_embeddings = self.text_embeddings(l_text) + l_text_pos
+        l_text_embeddings = self.text_embeddings(l_text) + l_text_pos  # of size: [64, 1024]
 
-        use_image = input_ids.shape[1] > self.l_text_seq_length
-        use_r_text = input_ids.shape[1] > self.l_text_seq_length + self.image_seq_length
+        use_image = input_ids.shape[1] > self.l_text_seq_length  # for capturing & vqa => True
+        use_r_text = input_ids.shape[1] > self.l_text_seq_length + self.image_seq_length  # for capturing & vqa => True
+        use_special_tokens = sp_loss_weight > 0
 
         embeddings = [l_text_embeddings]
         if use_image:
+            # from [all_batches, 64:64+256] -> of size: [bs, 256]
             image_input_ids = input_ids[:, self.l_text_seq_length:self.l_text_seq_length + self.image_seq_length]
+            # of size: [bs, 256, 1024]
             img_pos = self.get_image_pos_embeddings(image_input_ids, past_length=0, device=device)
+            # image_embeddings of size: [bs, 256, 1024]
             image_embeddings = self.image_embeddings(image_input_ids) + img_pos
             embeddings.append(image_embeddings)
 
         if use_r_text:
+            # from [all_batches, 64+256:] -> of size: [bs, 64]
             r_text = input_ids[:, self.l_text_seq_length + self.image_seq_length:]
+            # of size: [64, 1024]
             r_text_pos = self.r_text_pos_embeddings(torch.arange(r_text.shape[1], device=device))
             r_text_embeddings = self.text_embeddings(r_text) + r_text_pos
+            # r_text_embeddings of size: [bs, 64, 1024]
             embeddings.append(r_text_embeddings)
 
+        # overall embeddings of size: [bs, 384, 1024]
         embeddings = torch.cat(embeddings, dim=1)
 
         alpha = 0.1
         embeddings = embeddings * alpha + embeddings.detach() * (1 - alpha)
 
+        # overall attention_mask of size: [bs, 384, 384]
         attention_mask = attention_mask[:, :, :embeddings.shape[1], :embeddings.shape[1]]
         transformer_output, present_cache, hidden_states = self.transformer(
             embeddings, attention_mask, cache=cache, use_cache=use_cache,
             gradient_checkpointing=self.gradient_checkpointing
         )
-
+        # transformer_output => output embeddings of size: [bs, 384, 1024]
+        # logits of size: [bs, vocab_size, 384], vocab_size = 25408
         logits = self.to_logits(transformer_output)
         if return_loss is False:
             outputs = (logits, present_cache)
@@ -159,20 +172,30 @@ class ruDolphModel(torch.nn.Module):
             return outputs
 
         logits = rearrange(logits, 'b n c -> b c n')
+        # l_text_logits of size: [bs, 16832, 64]
         l_text_logits = logits[
             :, :self.vocab_size, :self.l_text_seq_length if use_image else self.l_text_seq_length-1
         ].contiguous().float()
+        # labels of size: [bs, 63] -> exclude bos token
         labels = [l_text[:, 1:]]
         if use_image:
+            # labels of size: [[bs, 63], [bs, 256]]
             labels.append(image_input_ids)
+            # a = 64, b = 64 + 256 - 1 = 319
             a, b = self.l_text_seq_length, self.l_text_seq_length + self.image_seq_length - 1
+            # image_logits of size: [bs, 8576, 255]
             image_logits = logits[:, self.vocab_size:, a:b].contiguous().float()
         if use_r_text:
+            # r_text_logits of size:  [bs, 16832, 64]
             r_text_logits = logits[:, :self.vocab_size, -self.r_text_seq_length:-1].contiguous().float()
             labels.append(r_text)
+        # overall labels of size: [bs, 383]
         labels = torch.cat(labels, dim=1).contiguous().long()
 
         loss, loss_weights, loss_values = 0, 0, {}
+
+        # Left text loss
+        # here l_text_logits[0] -> special task token
         loss_l_text = F.cross_entropy(
             l_text_logits,
             labels[:, :self.l_text_seq_length]
@@ -181,6 +204,8 @@ class ruDolphModel(torch.nn.Module):
         if lt_loss_weight:
             loss += loss_l_text*lt_loss_weight
             loss_weights += lt_loss_weight
+
+        # Image loss
         if use_image:
             loss_img = F.cross_entropy(
                 image_logits,
@@ -190,6 +215,8 @@ class ruDolphModel(torch.nn.Module):
             if img_loss_weight:
                 loss += loss_img*img_loss_weight
                 loss_weights += img_loss_weight
+
+        # Right text loss
         if use_r_text:
             loss_r_text = F.cross_entropy(
                 r_text_logits,
@@ -200,6 +227,27 @@ class ruDolphModel(torch.nn.Module):
             if rt_loss_weight:
                 loss += loss_r_text * rt_loss_weight
                 loss_weights += rt_loss_weight
+
+        # Special tokens loss
+        if use_special_tokens:
+            l_sp_logit = l_text_logits[:, :, 0]
+            l_sp_label = labels[:, 0]
+            loss_l_sp_token = F.cross_entropy(
+                l_text_logits[:, :, 0],
+                labels[:, 0],
+                ignore_index=0,
+            )
+            r_sp_logit = r_text_logits[:, :, 0]
+            r_sp_label = labels[:, -(self.r_text_seq_length - 1)]
+            loss_r_sp_token = F.cross_entropy(
+                r_text_logits[:, :, 0],
+                labels[:, -(self.r_text_seq_length - 1)],
+                ignore_index=0,
+            )
+            loss_sp_tokens = loss_l_sp_token + loss_r_sp_token
+            loss_values['loss_sp_tokens'] = loss_sp_tokens.data.detach().float()
+            loss += loss_sp_tokens * sp_loss_weight
+            loss_weights += sp_loss_weight
 
         loss = loss / loss_weights
         outputs = (loss, loss_values)

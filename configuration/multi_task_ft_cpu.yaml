@@ -1,0 +1,86 @@
+tasks:
+  vqa: true
+  captioning: true
+data:
+  captioning:
+    dataset_path: E:/DATA/ImageCaptioning/
+    train_input: E:/DATA/ImageCaptioning/captioning.json
+    train_output: E:/DATA/ImageCaptioning/captioning_answers.json
+    val_input: E:/DATA/ImageCaptioning/captioning_val.json
+    val_output: E:/DATA/ImageCaptioning/captioning_val_answer.json
+  vqa:
+    dataset_path: E:/DATA/TextVQA/vqa/
+    train_input: E:/DATA/TextVQA/vqa/vqa_train.json
+    train_output: E:/DATA/TextVQA/vqa/vqa_train_answer.json
+    val_input: E:/DATA/TextVQA/vqa/vqa_val.json
+    val_output: E:/DATA/TextVQA/vqa/vqa_val_answer.json
+model:
+  rudolph:
+    name: 350M
+    fp16: true
+    device: cpu
+    cache_dir: /tmp/rudolph
+    pretrained: false
+  from_checkoint: false
+  rudolph_weight: weights/RuDOLPH-350M-v2/pytorch_model.bin
+  vae:
+    dwt: false
+  freeze:
+    freeze_emb: false
+    freeze_ln: false
+    freeze_attn: false
+    freeze_ff: false
+    freeze_other: false
+  params:
+    num_layers: 24
+    hidden_size: 1024
+    num_attention_heads: 16
+    embedding_dropout_prob: 0.1
+    output_dropout_prob: 0.1
+    attention_dropout_prob: 0.1
+    l_text_seq_length: 64
+    image_tokens_per_dim: 16
+    r_text_seq_length: 64
+    kernel_size: 7
+    last_kernel_size: 9
+    cogview_sandwich_layernorm: true
+    cogview_pb_relax: true
+    text_special_tokens: 384
+    image_special_tokens: 384
+    vocab_size: 16448
+    image_vocab_size: 8192
+    mlp_activation: gelu_jit
+trainer:
+  bs: 2
+  task_weights:
+    capt_loss_weight: 0.5
+    vqa_loss_weight: 0.5
+    capt:
+      lt_loss_weight: 1
+      img_loss_weight: 1
+      rt_loss_weight: 7
+      sp_loss_weight: 1
+    vqa:
+      lt_loss_weight: 1
+      img_loss_weight: 1
+      rt_loss_weight: 7
+      sp_loss_weight: 1
+  scheduler:
+    max_lr: 2.0e-05
+  logger:
+    save_dir: tb_logs
+    name: 2tasks_model
+  checkpoints:
+    filename: cap_vqa_rudolph_{epoch:02d}_{step:03d}
+    every_n_train_steps: 1000
+    dirpath: checkpoints_2tasks_rudolph-350M-v2/
+    monitor: train_loss
+    mode: min
+    save_top_k: 1
+    save_last: true
+  pl_trainer:
+    gpus: 0
+    max_epochs: 5
+    gradient_clip_val: 1.0
+    enable_progress_bar: true
+    val_check_interval: 0.25
