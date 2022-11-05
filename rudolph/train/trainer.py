@@ -41,25 +41,9 @@ class RudolphLightning(pl.LightningModule):
         return loss
 
     def model_step(self, batch, stage):
-        (left_text_t, right_text_t), (left_text_m, right_text_m), (left_text_c, image_c, right_text_c), (
-        left_text_g, image_g), (left_text_vqa, image_vqa, right_text_vqa), (
-        left_text_tr, image_tr, right_text_tr) = batch
+        (left_text_c, image_c, right_text_c), (left_text_vqa, image_vqa, right_text_vqa) = batch
 
         losses = []
-
-        ## text_qa
-        if len(left_text_t) > 0:
-            bs_text = left_text_t.shape[0]
-            loss_text = self.get_loss(bs_text, left_text_t, None, right_text_t, self.task_weights.text)
-            self.log(f"{stage}_loss_text", loss_text, prog_bar=True, logger=True, batch_size=bs_text)
-            losses.append(self.task_weights.text_loss_weight * loss_text)
-
-        ## math_qa
-        if len(left_text_m) > 0:
-            bs_math = left_text_m.shape[0]
-            loss_math = self.get_loss(bs_math, left_text_m, None, right_text_m, self.task_weights.math)
-            self.log(f"{stage}_loss_math", loss_math, prog_bar=True, logger=True, batch_size=bs_math)
-            losses.append(self.task_weights.math_loss_weight * loss_math)
 
         ## captioning
         if len(left_text_c) > 0:
@@ -68,26 +52,12 @@ class RudolphLightning(pl.LightningModule):
             self.log(f"{stage}_loss_с", loss_с, prog_bar=True, logger=True, batch_size=bs_c)
             losses.append(self.task_weights.capt_loss_weight * loss_с)
 
-        ## generation
-        if len(left_text_g) > 0:
-            bs_g = left_text_g.shape[0]
-            loss_g = self.get_loss(bs_g, left_text_g, image_g, None, self.task_weights.gener)
-            self.log(f"{stage}_loss_g", loss_g, prog_bar=True, logger=True, batch_size=bs_g)
-            losses.append(self.task_weights.gener_loss_weight * loss_g)
-
         ## vqa
         if len(left_text_vqa) > 0:
             bs_vqa = left_text_vqa.shape[0]
             loss_vqa = self.get_loss(bs_vqa, left_text_vqa, image_vqa, right_text_vqa, self.task_weights.vqa)
             self.log(f"{stage}_loss_vqa", loss_vqa, prog_bar=True, logger=True, batch_size=bs_vqa)
             losses.append(self.task_weights.vqa_loss_weight * loss_vqa)
-
-        ## text recognition
-        if len(left_text_tr) > 0:
-            bs_tr = left_text_tr.shape[0]
-            loss_tr = self.get_loss(bs_tr, left_text_tr, image_tr, right_text_tr, self.task_weights.text_recog)
-            self.log(f"{stage}_loss_tr", loss_tr, prog_bar=True, logger=True, batch_size=bs_tr)
-            losses.append(self.task_weights.text_recog_loss_weight * loss_tr)
 
         ## join loss
         loss = sum(losses)
