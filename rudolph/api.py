@@ -18,8 +18,7 @@ from tqdm.auto import tqdm
 from copy import deepcopy
 from einops import rearrange
 
-from . import utils
-
+from rudolph import utils
 
 DEFAULT_SPC_TOKENS = {
     '<LT_UNK>': 16384,
@@ -32,7 +31,6 @@ DEFAULT_SPC_TOKENS = {
 
 
 class ruDolphApi:
-
     spc_id = -1
 
     def __init__(self, model, tokenizer, vae, spc_tokens=None, quite=False, *, bs=24, q=0.5, txt_top_k=64,
@@ -98,6 +96,9 @@ class ruDolphApi:
     def image_captioning(self, pil_img, r_template='на картинке', early_stop=64, captions_num=5, seed=None, bs=None,
                          generations_num=48, top_k=None, top_p=None, temperature=None, ppl_txt_w=0.05,
                          l_special_token='<LT_T2I>', r_special_token='<RT_I2T>'):
+        """
+        Generates textual descriptions of images.
+        """
         texts, counts = self.generate_captions(
             pil_img, r_template=r_template, early_stop=early_stop, captions_num=generations_num,
             bs=bs, top_k=top_k, top_p=top_p, temperature=temperature, seed=seed, r_special_token=r_special_token,
@@ -189,12 +190,12 @@ class ruDolphApi:
                 logits, _ = self.model(input_ids, attention_mask, cache=None, use_cache=False, return_loss=False)
                 logits = rearrange(logits, 'b n c -> b c n')
                 image_logits = logits[:, self.vocab_size:,
-                                      self.l_text_seq_length:self.l_text_seq_length + self.image_seq_length - 1]
+                               self.l_text_seq_length:self.l_text_seq_length + self.image_seq_length - 1]
                 if self.image_special_tokens:
                     image_logits = image_logits[:, :-self.image_special_tokens]
                 image_logits = image_logits.contiguous().float()
                 r_text_logits = logits[:, :self.vocab_size - self.l_text_seq_length,
-                                       -self.r_text_seq_length:-1].contiguous().float()
+                                -self.r_text_seq_length:-1].contiguous().float()
                 input_ids = input_ids.contiguous().long()
 
                 ppl_img.append(
@@ -266,8 +267,8 @@ class ruDolphApi:
                 logits, cache = self.model(input_ids, attention_mask, cache=cache, use_cache=True, return_loss=False)
                 logits = rearrange(logits, 'b n c -> b c n')
 
-                r_text_logits = logits[:, :self.vocab_size-self.l_text_seq_length,
-                                       -self.r_text_seq_length:-1].contiguous()
+                r_text_logits = logits[:, :self.vocab_size - self.l_text_seq_length,
+                                -self.r_text_seq_length:-1].contiguous()
 
                 chunk_ppl_txt = self.ce_to_ppl(F.cross_entropy(
                     r_text_logits[:, :, :],
@@ -289,11 +290,11 @@ class ruDolphApi:
         }
 
     def generate_texts(
-        self, template='',
-        top_k=None, top_p=None, texts_num=48,
-        early_stop=None,
-        temperature=None, bs=None, seed=None, use_cache=True, special_token='<LT_T2T>',
-        allowed_token_ids=None,
+            self, template='',
+            top_k=None, top_p=None, texts_num=48,
+            early_stop=None,
+            temperature=None, bs=None, seed=None, use_cache=True, special_token='<LT_T2T>',
+            allowed_token_ids=None,
     ):
         torch.cuda.empty_cache()
         bs = bs or self.bs
@@ -375,7 +376,7 @@ class ruDolphApi:
                 logits = rearrange(logits, 'b n c -> b c n')
 
                 l_text_logits = logits[:, :self.vocab_size - self.l_text_seq_length,
-                                       :self.l_text_seq_length - 1].contiguous().float()
+                                :self.l_text_seq_length - 1].contiguous().float()
                 input_ids = input_ids.contiguous().long()
 
                 ppl_txt.append(
@@ -402,10 +403,13 @@ class ruDolphApi:
         return result
 
     def generate_captions(
-        self, pil_img, early_stop=None, top_k=None, top_p=None, captions_num=48,
+            self, pil_img, early_stop=None, top_k=None, top_p=None, captions_num=48,
             temperature=None, bs=None, seed=None, use_cache=True,
             l_template='', r_template='', l_special_token='<LT_I2T>', r_special_token='<RT_I2T>',
     ):
+        """
+        A helper function for image description generation.
+        """
         torch.cuda.empty_cache()
         bs = bs or self.bs
         top_k = top_k or self.txt_top_k
@@ -522,7 +526,7 @@ class ruDolphApi:
                 logits = rearrange(logits, 'b n c -> b c n')
 
                 image_logits = logits[:, self.vocab_size:,
-                                      self.l_text_seq_length:self.l_text_seq_length + self.image_seq_length - 1]
+                               self.l_text_seq_length:self.l_text_seq_length + self.image_seq_length - 1]
                 if self.image_special_tokens:
                     image_logits = image_logits[:, :-self.image_special_tokens]
                 image_logits = image_logits.contiguous().float()
@@ -576,7 +580,7 @@ class ruDolphApi:
         encoded_CFG[torch.where(encoded_CFG == self.spc_id)] = self.spc_tokens[special_token]
 
         encoded = torch.stack([encoded, encoded_CFG])
-        weights = [1-weight_cfg, weight_cfg]
+        weights = [1 - weight_cfg, weight_cfg]
         bs //= len(weights)
         codebooks = []
         for chunk in more_itertools.chunked(range(images_num), bs):
@@ -626,6 +630,7 @@ class ruDolphApi:
 
         return torch.cat(codebooks)
 
+
     @staticmethod
     def show(pil_images, nrow=4, size=11, save_dir=None, show=True):
         if save_dir is not None:
@@ -672,6 +677,12 @@ class ruDolphApi:
         return ppl
 
     def encode_text(self, text, text_seq_length):
+        """
+        Encode text into format:
+           [
+               <BOS> <LT_SPEC_TOKEN> <TEXT_TOKEN_#0> ... <EOS>
+           ]
+        """
         tokens = self.tokenizer.tokenizer.encode([text], output_type=yttm.OutputType.ID)[0]
         bos = [self.tokenizer.bos_id]
         if self.text_special_tokens:
@@ -680,4 +691,7 @@ class ruDolphApi:
         return self.tokenizer.prepare_tokens(tokens, text_seq_length)
 
     def decode_text(self, encoded):
+        """
+        Decode tokens sequence to text string.
+        """
         return self.tokenizer.tokenizer.decode(encoded.cpu().numpy().tolist(), ignore_ids=self.ignore_ids)[0]

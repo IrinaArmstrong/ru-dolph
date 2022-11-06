@@ -3,6 +3,7 @@ from torch.utils.data import Dataset
 
 from PIL import Image
 import torchvision.transforms as T
+from torch.nn.utils.rnn import pad_sequence
 
 import youtokentome as yttm
 
@@ -34,6 +35,11 @@ class InferenceDatasetRetriever(Dataset):
         ])
         self.text_special_tokens = 1
         self.spc_tokens = DEFAULT_SPC_TOKENS
+        self.decode_ignore_ids = [
+            self.tokenizer.eos_id, self.tokenizer.bos_id,
+            self.tokenizer.unk_id, self.tokenizer.pad_id,
+            self.spc_id, *list(self.spc_tokens.values())
+        ]
 
     def __len__(self):
         return len(self.ids)
@@ -69,3 +75,28 @@ class InferenceDatasetRetriever(Dataset):
             bos.append(self.spc_id)
         tokens = bos + tokens + [self.tokenizer.eos_id]
         return self.tokenizer.prepare_tokens(tokens, text_seq_length)
+
+    def decode_text(self, encoded, ignore_ids):
+        """
+        Decode tokens sequence to text string.
+        """
+        return self.tokenizer.tokenizer.decode(encoded.cpu().numpy().tolist(),
+                                               ignore_ids=self.decode_ignore_ids)[0]
+
+
+def fb_collate_fn(batch):
+    """
+    Reduced task number collate fn
+    """
+    left_texts, images, right_texts = [], [], []
+
+    for i, sample in enumerate(batch):
+        left_texts.append(sample['left_text'])
+        images.append(sample['image'])
+        right_texts.append(sample['right_text'])
+
+    left_texts = pad_sequence(left_texts, batch_first=True)
+    images = torch.stack(images)
+    right_texts = pad_sequence(right_texts, batch_first=True)
+
+    return left_texts, images, right_texts

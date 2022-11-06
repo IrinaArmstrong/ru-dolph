@@ -1,0 +1,48 @@
+tasks:
+  vqa: true
+  captioning: true
+data:
+  captioning:
+    dataset_path: E:/DATA/ImageCaptioning/
+    train_input: E:/DATA/ImageCaptioning/captioning.json
+    train_output: E:/DATA/ImageCaptioning/captioning_answers.json
+    val_input: E:/DATA/ImageCaptioning/captioning_val.json
+    val_output: E:/DATA/ImageCaptioning/captioning_val_answer.json
+  vqa:
+    dataset_path: E:/DATA/TextVQA/vqa/
+    train_input: E:/DATA/TextVQA/vqa/vqa_train.json
+    train_output: E:/DATA/TextVQA/vqa/vqa_train_answer.json
+    val_input: E:/DATA/TextVQA/vqa/vqa_val.json
+    val_output: E:/DATA/TextVQA/vqa/vqa_val_answer.json
+model:
+  rudolph:
+    name: 350M
+    fp16: true
+    device: cpu
+    cache_dir: /tmp/rudolph
+    pretrained: false
+  from_checkoint: true
+  rudolph_weight: weights/RuDOLPH-350M-v2/pytorch_model.bin
+  vae:
+    dwt: false
+    device: 'cuda'
+  params:
+    num_layers: 24
+    hidden_size: 1024
+    num_attention_heads: 16
+    embedding_dropout_prob: 0.1
+    output_dropout_prob: 0.1
+    attention_dropout_prob: 0.1
+    l_text_seq_length: 64
+    image_tokens_per_dim: 16
+    r_text_seq_length: 64
+    kernel_size: 7
+    last_kernel_size: 9
+    cogview_sandwich_layernorm: true
+    cogview_pb_relax: true
+    text_special_tokens: 384
+    image_special_tokens: 384
+    vocab_size: 16448
+    image_vocab_size: 8192
+    mlp_activation: gelu_jit
+bs: 2

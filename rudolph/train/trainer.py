@@ -37,6 +37,7 @@ class RudolphLightning(pl.LightningModule):
             input_ids = torch.cat((left_text, image_input_ids, right_text), dim=1)
         loss, loss_values = self.model.forward(input_ids, attention_mask, lt_loss_weight=task.lt_loss_weight,
                                                img_loss_weight=task.img_loss_weight, rt_loss_weight=task.rt_loss_weight,
+                                               sp_loss_weight=task.sp_loss_weight,
                                                return_loss=True)
         return loss
 

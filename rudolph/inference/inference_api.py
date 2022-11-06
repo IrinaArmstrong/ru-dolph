@@ -18,7 +18,6 @@ from tqdm.auto import tqdm
 from copy import deepcopy
 from einops import rearrange
 
-
 DEFAULT_SPC_TOKENS = {
     '<LT_UNK>': 16384,
     '<RT_UNK>': 16385,
@@ -26,28 +25,27 @@ DEFAULT_SPC_TOKENS = {
     '<LT_I2T>': 16387,
     '<LT_T2T>': 16388,
     '<RT_I2T>': 16389,
-    
+
     '<LT_TQA>': 16390,
     '<RT_TQA>': 16391,
-    
+
     '<LT_MQA>': 16392,
     '<RT_MQA>': 16393,
-    
+
     '<LT_VQA>': 16394,
     '<RT_VQA>': 16395,
-    
+
     '<LT_CAP>': 16396,
     '<RT_CAP>': 16397,
-    
+
     '<LT_GEN>': 16398,
-    
+
     '<LT_REC>': 16399,
     '<RT_REC>': 16400,
 }
 
 
 class ruDolphApi:
-
     spc_id = -1
 
     def __init__(self, model, tokenizer, vae, spc_tokens=None, quite=False, *, bs=24, q=0.5, txt_top_k=64,
@@ -88,14 +86,12 @@ class ruDolphApi:
         ]
         self.quite = quite
 
-    def generate_codebooks(self, images, image_tokens, left_text, vocab_size, top_k, top_p, temperature=1.0, use_cache=True):   
-        '''
-            Generate image tokens.
-        '''
+    def generate_codebooks(self, images, image_tokens, left_text, vocab_size, top_k, top_p, temperature=1.0,
+                           use_cache=True):
+        """
+        Generate image tokens.
+        """
         torch.cuda.empty_cache()
-        #print(images)
-        #print(image_tokens.shape)
-        #print(image_seq_length)
         left_text_wo_images = []
         idxs = []
         for i in range(images.shape[0]):
@@ -104,21 +100,21 @@ class ruDolphApi:
                 idxs.append(i)
 
         if idxs:
-            out = torch.stack(left_text_wo_images) 
-            codebooks = []         
+            out = torch.stack(left_text_wo_images)
+            codebooks = []
             with torch.no_grad():
                 chunk_bs = out.shape[0]
                 attention_mask = self.get_attention_mask(chunk_bs)
                 cache = None
-            
+
                 iter_range = range(self.l_text_seq_length, self.l_text_seq_length + self.image_seq_length)
-            
+
                 if not self.quite:
                     iter_range = tqdm(iter_range)
-                
+
                 for idx in iter_range:
                     idx -= self.l_text_seq_length
-                    logits, cache = self.model(out, attention_mask, cache = cache, use_cache=use_cache, return_loss=False)
+                    logits, cache = self.model(out, attention_mask, cache=cache, use_cache=use_cache, return_loss=False)
                     logits = logits[:, -1, self.vocab_size:]
                     if self.image_special_tokens:
                         logits = logits[:, :-self.image_special_tokens]
@@ -127,7 +123,7 @@ class ruDolphApi:
                     probs = torch.nn.functional.softmax(filtered_logits, dim=-1)
                     sample = torch.multinomial(probs, 1)
                     out = torch.cat((out, sample), dim=-1)
-                codebooks.append(out[:, -self.image_seq_length:])    
+                codebooks.append(out[:, -self.image_seq_length:])
             images_codebooks = torch.cat(codebooks)
 
             ## Join generated images with initial images
@@ -135,25 +131,69 @@ class ruDolphApi:
             for idx in idxs:
                 image_tokens[idx] = images_codebooks[i]
                 i += 1
-            
+
         return image_tokens, idxs
 
-    def generate_tokens(self, image_tokens, left_text, vocab_size, top_k, top_p, temperature=1.0, use_cache=True, template='', allowed_token_ids=None, special_token='<RT_UNK>'):
-        '''
+    def generate_special_tokens_embeddings(self, image_tokens, left_text, use_cache=True,
+                                           template='', special_token='<RT_UNK>'):
+        torch.cuda.empty_cache()
+        chunk_bs = left_text.shape[0]
+
+        template = template.lower().strip()
+        template_encoded = self.encode_text(template, text_seq_length=self.l_text_seq_length)
+
+        template_size = (template_encoded != 0).sum() - 1  # eos
+
+        template_encoded = template_encoded[:template_size]
+        template_encoded[torch.where(template_encoded == self.spc_id)] = self.spc_tokens[special_token]
+
+        print('Decoded sequence', self.decode_text(template_encoded))
+
+        last_hidden_states = []
+        with torch.no_grad():
+            attention_mask = self.get_attention_mask(chunk_bs)
+
+            out = torch.cat((
+                left_text.to(self.device),
+                image_tokens,
+                template_encoded.repeat(chunk_bs, 1).to(self.device),
+            ), dim=1)
+
+            cache = None
+            iter_range = range(
+                self.l_text_seq_length + self.image_seq_length + template_size,
+                self.l_text_seq_length + self.image_seq_length + self.r_text_seq_length
+            )
+
+            if not self.quite:
+                iter_range = tqdm(iter_range)
+
+            for _ in iter_range:
+                outputs = self.model(out, attention_mask, cache=cache, use_cache=use_cache,
+                                     return_loss=False, return_hidden_states=True)
+
+                last_h_state = outputs[-1]
+                print(last_h_state.size())
+            last_hidden_states.append(last_h_state.deatach().cpu())
+            return last_hidden_states
+
+    def generate_tokens(self, image_tokens, left_text, vocab_size, top_k, top_p, temperature=1.0, use_cache=True,
+                        template='', allowed_token_ids=None, special_token='<RT_UNK>'):
+        """
             Generate right text tokens.
-        '''
+        """
         torch.cuda.empty_cache()
         generated_tokens = []
         chunk_bs = left_text.shape[0]
 
         template = template.lower().strip()
         template_encoded = self.encode_text(template, text_seq_length=self.l_text_seq_length)
-    
+
         template_size = (template_encoded != 0).sum() - 1  # eos
-        
+
         template_encoded = template_encoded[:template_size]
         template_encoded[torch.where(template_encoded == self.spc_id)] = self.spc_tokens[special_token]
-        
+
         print('Decoded sequence', self.decode_text(template_encoded))
 
         with torch.no_grad():
@@ -167,38 +207,38 @@ class ruDolphApi:
 
             cache = None
             iter_range = range(
-                self.l_text_seq_length + self.image_seq_length + template_size, 
+                self.l_text_seq_length + self.image_seq_length + template_size,
                 self.l_text_seq_length + self.image_seq_length + self.r_text_seq_length
             )
-        
+
             if not self.quite:
                 iter_range = tqdm(iter_range)
-                
+
             for _ in iter_range:
-                #print(cache, use_cache)
+                # print(cache, use_cache)
                 logits, cache = self.model(out, attention_mask, cache=cache, use_cache=use_cache, return_loss=False)
 
                 logits = logits[:, -1, :self.vocab_size]
-            
+
                 if allowed_token_ids:
                     logits = logits[:, allowed_token_ids]
-            
+
                 logits /= temperature
                 filtered_logits = transformers.top_k_top_p_filtering(logits, top_k=top_k, top_p=top_p)
                 probs = torch.nn.functional.softmax(filtered_logits, dim=-1)
                 sample = torch.multinomial(probs, 1)
-            
+
                 if allowed_token_ids:
-                        sample = torch.tensor(allowed_token_ids).to(self.device)[sample]
-            
+                    sample = torch.tensor(allowed_token_ids).to(self.device)[sample]
+
                 indexes = torch.where(sample >= self.vocab_size - self.l_text_seq_length)
                 sample[indexes] = 3
                 out = torch.cat((out, sample), dim=-1)
 
             generated_tokens.append(out[:, -self.r_text_seq_length:])
 
-        tokens = torch.cat(generated_tokens)[:,1:]
-        #tokens = get_out_mask(tokens, self.device)
+        tokens = torch.cat(generated_tokens)[:, 1:]
+        # tokens = get_out_mask(tokens, self.device)
 
         texts = []
 
@@ -208,8 +248,8 @@ class ruDolphApi:
                 end = end[0]
             else:
                 end = tokens[i].shape[0]
-            
-            text = self.decode_text(tokens[i][:end+1]).strip()#end+1
+
+            text = self.decode_text(tokens[i][:end + 1]).strip()  # end+1
             if text:
                 texts.append(text)
             else:
@@ -227,11 +267,12 @@ class ruDolphApi:
             if text:
                 texts.append(text)
         '''
-        #for i in range(tokens.shape[0]):
+        # for i in range(tokens.shape[0]):
         #    texts.append(self.decode_text(tokens[i]).strip())
         return texts
 
-    def generate_tokens_left(self, image_tokens, left_text, vocab_size, top_k, top_p, temperature=1.0, use_cache=True, template='', allowed_token_ids=None, special_token='<LT_TQA>'):
+    def generate_tokens_left(self, image_tokens, left_text, vocab_size, top_k, top_p, temperature=1.0, use_cache=True,
+                             template='', allowed_token_ids=None, special_token='<LT_TQA>'):
         '''
             Generate right text tokens.
         '''
@@ -240,14 +281,14 @@ class ruDolphApi:
         chunk_bs = left_text.shape[0]
 
         template = template.lower().strip()
-        template_encoded = self.encode_text(template, text_seq_length=self.l_text_seq_length, add_special_token = False)
+        template_encoded = self.encode_text(template, text_seq_length=self.l_text_seq_length, add_special_token=False)
 
         template_size = (template_encoded != 0).sum() - 1  # eos
-        
+
         template_encoded = template_encoded[:template_size]
         template_encoded[torch.where(template_encoded == self.spc_id)] = self.spc_tokens[special_token]
 
-        #print(left_text.shape)
+        # print(left_text.shape)
 
         left_text[left_text == 3] = 0  # eos
         left_text_size = max((left_text != 0).sum(1))
@@ -264,43 +305,43 @@ class ruDolphApi:
                 template_encoded.repeat(chunk_bs, 1).to(self.device)
             ), dim=1)
 
-            #print('Out shape', out.shape)
+            # print('Out shape', out.shape)
 
             cache = None
             iter_range = range(
-                left_text_size + template_size, 
+                left_text_size + template_size,
                 self.l_text_seq_length
             )
-            #print(left_text_size + template_size, self.l_text_seq_length)
-        
+            # print(left_text_size + template_size, self.l_text_seq_length)
+
             if not self.quite:
                 iter_range = tqdm(iter_range)
-                
+
             for _ in iter_range:
-                #print(cache, use_cache)
+                # print(cache, use_cache)
                 logits, cache = self.model(out, attention_mask, cache=cache, use_cache=use_cache, return_loss=False)
 
                 logits = logits[:, -1, :self.vocab_size]
-            
+
                 if allowed_token_ids:
                     logits = logits[:, allowed_token_ids]
-            
+
                 logits /= temperature
                 filtered_logits = transformers.top_k_top_p_filtering(logits, top_k=top_k, top_p=top_p)
                 probs = torch.nn.functional.softmax(filtered_logits, dim=-1)
                 sample = torch.multinomial(probs, 1)
-            
+
                 if allowed_token_ids:
-                        sample = torch.tensor(allowed_token_ids).to(self.device)[sample]
-            
+                    sample = torch.tensor(allowed_token_ids).to(self.device)[sample]
+
                 indexes = torch.where(sample > self.text_vocab_size)
                 sample[indexes] = self.tokenizer.eos_id
                 out = torch.cat((out, sample), dim=-1)
 
             generated_tokens.append(out[:, :self.l_text_seq_length])
 
-        tokens = torch.cat(generated_tokens)[:,1:]
-        #tokens = get_out_mask(tokens, self.device)
+        tokens = torch.cat(generated_tokens)[:, 1:]
+        # tokens = get_out_mask(tokens, self.device)
 
         texts = []
         for i in range(tokens.shape[0]):
@@ -308,11 +349,11 @@ class ruDolphApi:
         return texts
 
     def generate_texts(
-        self, template='',
-        top_k=None, top_p=None, texts_num=48,
-        early_stop=None,
-        temperature=None, bs=None, seed=None, use_cache=True, special_token='<LT_T2T>',
-        allowed_token_ids=None,
+            self, template='',
+            top_k=None, top_p=None, texts_num=48,
+            early_stop=None,
+            temperature=None, bs=None, seed=None, use_cache=True, special_token='<LT_T2T>',
+            allowed_token_ids=None,
     ):
         torch.cuda.empty_cache()
         bs = bs or self.bs
@@ -323,7 +364,7 @@ class ruDolphApi:
         early_stop = early_stop or self.l_text_seq_length
 
         template = template.lower().strip()
-        template_encoded = self.encode_text(template, text_seq_length=self.l_text_seq_length, add_special_token = False)
+        template_encoded = self.encode_text(template, text_seq_length=self.l_text_seq_length, add_special_token=False)
         template_size = (template_encoded != 0).sum() - 1  # eos
         if not self.quite:
             print('--> template_size:', template_size.item())
@@ -367,7 +408,7 @@ class ruDolphApi:
             else:
                 end = tokens.shape[0]
 
-            text = self.decode_text(tokens[:end+1]).strip()
+            text = self.decode_text(tokens[:end + 1]).strip()
             if text:
                 texts.update([text])
 
@@ -380,7 +421,7 @@ class ruDolphApi:
                 chunk_encoded = []
                 for text, _ in chunk:
                     text = text.lower().strip()
-                    encoded = self.encode_text(text, text_seq_length=self.l_text_seq_length, add_special_token = False)
+                    encoded = self.encode_text(text, text_seq_length=self.l_text_seq_length, add_special_token=False)
                     chunk_encoded.append(encoded)
 
                 chunk_encoded = torch.stack(chunk_encoded)
@@ -393,7 +434,7 @@ class ruDolphApi:
                 logits = rearrange(logits, 'b n c -> b c n')
 
                 l_text_logits = logits[:, :self.vocab_size - self.l_text_seq_length,
-                                       :self.l_text_seq_length - 1].contiguous().float()
+                                :self.l_text_seq_length - 1].contiguous().float()
                 input_ids = input_ids.contiguous().long()
 
                 ppl_txt.append(
@@ -429,7 +470,13 @@ class ruDolphApi:
     def get_attention_mask(self, bs):
         return torch.tril(torch.ones((bs, 1, self.total_seq_length, self.total_seq_length), device=self.device))
 
-    def encode_text(self, text, text_seq_length, add_special_token = True):
+    def encode_text(self, text, text_seq_length, add_special_token=True):
+        """
+        Encode text into format:
+           [
+               <BOS> <LT_SPEC_TOKEN> <TEXT_TOKEN_#0> ... <EOS>
+           ]
+        """
         tokens = self.tokenizer.tokenizer.encode([text], output_type=yttm.OutputType.ID)[0]
         bos = [self.tokenizer.bos_id]
         if add_special_token:
@@ -438,5 +485,7 @@ class ruDolphApi:
         return self.tokenizer.prepare_tokens(tokens, text_seq_length)
 
     def decode_text(self, encoded):
-        #print(self.text_vocab_size)
+        """
+        Decode tokens sequence to text string.
+        """
         return self.tokenizer.tokenizer.decode(encoded.cpu().numpy().tolist(), ignore_ids=self.ignore_ids)[0]

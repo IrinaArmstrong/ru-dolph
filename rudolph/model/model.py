@@ -230,15 +230,15 @@ class ruDolphModel(torch.nn.Module):
 
         # Special tokens loss
         if use_special_tokens:
-            l_sp_logit = l_text_logits[:, :, 0]
-            l_sp_label = labels[:, 0]
+            # l_sp_logit = l_text_logits[:, :, 0]
+            # l_sp_label = labels[:, 0]
             loss_l_sp_token = F.cross_entropy(
                 l_text_logits[:, :, 0],
                 labels[:, 0],
                 ignore_index=0,
             )
-            r_sp_logit = r_text_logits[:, :, 0]
-            r_sp_label = labels[:, -(self.r_text_seq_length - 1)]
+            # r_sp_logit = r_text_logits[:, :, 0]
+            # r_sp_label = labels[:, -(self.r_text_seq_length - 1)]
             loss_r_sp_token = F.cross_entropy(
                 r_text_logits[:, :, 0],
                 labels[:, -(self.r_text_seq_length - 1)],
