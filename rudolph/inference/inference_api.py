@@ -1,22 +1,17 @@
 # -*- coding: utf-8 -*-
-import os
-from glob import glob
-from os.path import join
-from datetime import datetime
+import more_itertools
+from copy import deepcopy
+from tqdm.auto import tqdm
+from einops import rearrange
 from collections import Counter
+from typing import Tuple
 
 import torch
-import torchvision
 import transformers
-import more_itertools
-import numpy as np
 import youtokentome as yttm
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
 import torchvision.transforms as T
-from tqdm.auto import tqdm
-from copy import deepcopy
-from einops import rearrange
+
 
 DEFAULT_SPC_TOKENS = {
     '<LT_UNK>': 16384,
@@ -134,8 +129,15 @@ class ruDolphApi:
 
         return image_tokens, idxs
 
-    def generate_special_tokens_embeddings(self, image_tokens, left_text, use_cache=True,
-                                           template='', special_token='<RT_UNK>'):
+    def generate_special_tokens_embeddings(self, image_tokens: torch.Tensor, left_text: torch.Tensor,
+                                           use_cache: bool = True, template: str = '',
+                                           special_token: str = '<RT_UNK>') -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Generates left and right special tokens embeddings.
+        return
+            left_sp_token_embeddings: tensor of size [bs, 1024] for <LT_xxx>
+            right_sp_token_embeddings: tensor of size [bs, 1024] for <RT_xxx>
+        """
         torch.cuda.empty_cache()
         chunk_bs = left_text.shape[0]
 
@@ -146,36 +148,36 @@ class ruDolphApi:
 
         template_encoded = template_encoded[:template_size]
         template_encoded[torch.where(template_encoded == self.spc_id)] = self.spc_tokens[special_token]
+        # template_encoded as: [bos, <RT_UNK>] == [2, 16385], of size: [2,]
+        # print('Decoded sequence', self.decode_text(template_encoded))
 
-        print('Decoded sequence', self.decode_text(template_encoded))
-
-        last_hidden_states = []
         with torch.no_grad():
             attention_mask = self.get_attention_mask(chunk_bs)
 
             out = torch.cat((
-                left_text.to(self.device),
-                image_tokens,
-                template_encoded.repeat(chunk_bs, 1).to(self.device),
+                left_text.to(self.device),  # of size: [bs, 64]
+                image_tokens,  # of size: [bs, 256]
+                template_encoded.repeat(chunk_bs, 1).to(self.device),  # of size: [bs, 2]
             ), dim=1)
+            # out of size: [2, 322]
 
-            cache = None
             iter_range = range(
                 self.l_text_seq_length + self.image_seq_length + template_size,
                 self.l_text_seq_length + self.image_seq_length + self.r_text_seq_length
-            )
+            )  # iter_range: (322, 384) - for tokens generation
 
-            if not self.quite:
-                iter_range = tqdm(iter_range)
+            cache = None
+            outputs = self.model(out, attention_mask, cache=cache, use_cache=use_cache,
+                                         return_loss=False, return_hidden_states=True)
+            # outputs - 3 tensors:
+            # logits of size: [bs, input_seq_len==322, vocab_size==25408]
+            # cache
+            # all hidden states of size: [24] & [bs, input_seq_len==322, 1024]
+            last_hidden_states = outputs[-1][-1].detach().cpu()
+            lt_sp_token_embeddings = last_hidden_states[:, 1, :]
+            rt_sp_token_embeddings = last_hidden_states[:, -1, :]
 
-            for _ in iter_range:
-                outputs = self.model(out, attention_mask, cache=cache, use_cache=use_cache,
-                                     return_loss=False, return_hidden_states=True)
-
-                last_h_state = outputs[-1]
-                print(last_h_state.size())
-            last_hidden_states.append(last_h_state.deatach().cpu())
-            return last_hidden_states
+            return lt_sp_token_embeddings, rt_sp_token_embeddings
 
     def generate_tokens(self, image_tokens, left_text, vocab_size, top_k, top_p, temperature=1.0, use_cache=True,
                         template='', allowed_token_ids=None, special_token='<RT_UNK>'):

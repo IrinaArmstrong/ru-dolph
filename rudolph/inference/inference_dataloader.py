@@ -21,9 +21,10 @@ DEFAULT_SPC_TOKENS = {
 class InferenceDatasetRetriever(Dataset):
     spc_id = -1
 
-    def __init__(self, left_text, image_path, ids, tokenizer, model_params):
+    def __init__(self, left_text, image_path, ids, tokenizer, model_params, labels = None):
         self.ids = ids
         self.left_text = left_text
+        self.labels = labels
         self.image_path = image_path
         self.tokenizer = tokenizer
         self.model_params = model_params
@@ -88,15 +89,15 @@ def fb_collate_fn(batch):
     """
     Reduced task number collate fn
     """
-    left_texts, images, right_texts = [], [], []
+    ids, left_texts, images = [], [], []
 
     for i, sample in enumerate(batch):
-        left_texts.append(sample['left_text'])
-        images.append(sample['image'])
-        right_texts.append(sample['right_text'])
+        ids.append(sample[0])
+        left_texts.append(sample[1])
+        images.append(sample[2])
 
+    ids = torch.Tensor(ids)
     left_texts = pad_sequence(left_texts, batch_first=True)
     images = torch.stack(images)
-    right_texts = pad_sequence(right_texts, batch_first=True)
 
-    return left_texts, images, right_texts
+    return ids, left_texts, images

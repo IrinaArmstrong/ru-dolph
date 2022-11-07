@@ -1,9 +1,9 @@
 import os
-import unittest
 from pathlib import Path
 from omegaconf import OmegaConf
 import pandas as pd
 from tqdm import tqdm
+from typing import Optional
 
 import torch
 from torch.utils.data import DataLoader
@@ -11,25 +11,24 @@ from rudalle import get_vae
 from rudolph.inference.inference_dataloader import InferenceDatasetRetriever, fb_collate_fn
 from rudolph.train.utils import create_dataset
 from rudalle.tokenizer import get_tokenizer
-from rudolph.model import get_rudolph_model, ruDolphModel
+from rudolph.model import get_rudolph_model
 from rudolph.inference.inference_api import ruDolphApi
 
 
-class TestSpTokensEmbeddings(unittest.TestCase):
+class EmbeddingsGenerator:
 
-    def __init__(self, method_name="runTest"):
-        super().__init__(method_name)
+    def __init__(self, config_path: str, model: Optional = None,
+                 tokenizer: Optional = None, vae: Optional = None):
         self._root_dir = Path().resolve().parent
-        config_path = self._root_dir / "configuration" / "multi_task_inference_cpu.yaml"
-        if config_path.exists():
-            self.config = OmegaConf.load(str(config_path))
-            # print(OmegaConf.to_yaml(self.config))
+        if Path(config_path).exists():
+            self.config = OmegaConf.load(config_path)
+            print(OmegaConf.to_yaml(self.config))
         else:
             raise FileNotFoundError(f"Configuration file do not exists by path: {config_path} !")
         self.device = self.config['model'].rudolph.device
-        self.tokenizer = get_tokenizer()
-        self.vae = get_vae(dwt=False).to(self.device)
-        self.model = get_rudolph_model('350M', fp16=False, device=self.device)
+        self.tokenizer = tokenizer if tokenizer is not None else get_tokenizer()
+        self.vae = vae if vae is not None else get_vae(dwt=False).to(self.device)
+        self.model = model if model is not None else get_rudolph_model('350M', fp16=False, device=self.device)
         self.vocab_size = self.model.get_param('vocab_size')
         self.loader = self._get_dataloader(task_name='captioning')
         self.api = ruDolphApi(self.model, self.tokenizer, self.vae, bs=12)
@@ -68,7 +67,7 @@ class TestSpTokensEmbeddings(unittest.TestCase):
         print(f"Dataloader size: {len(loader)} with batch size: {self.config.bs}")
         return loader
 
-    def test_sp_tokens_embeddings(self):
+    def generate_sp_tokens_embeddings(self):
         vocab = self.tokenizer.tokenizer.vocab()
         allowed_token_ids = []
         for i, token in enumerate(vocab):
@@ -86,7 +85,7 @@ class TestSpTokensEmbeddings(unittest.TestCase):
             l_lhs, r_lhs = self.api.generate_special_tokens_embeddings(image_tokens, left_text, self.vocab_size,
                                                               template='', special_token='<RT_UNK>')
 
-            # Save predictions to - ???
+            # Save predictions to dict
             for id, l_e, r_e in zip(ids_question, l_lhs, r_lhs):
                 sp_tokens_embeddings.append({
                     "id": id,
