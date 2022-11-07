@@ -89,10 +89,10 @@ class EmbeddingsGenerator:
             # Save predictions to dict
             for id, l_e, r_e in zip(ids_question, l_lhs, r_lhs):
                 sp_tokens_embeddings.append({
-                    "id": id,
+                    "id": id.item(),
                     "left_sp_token_embedding": l_e,
                     "right_sp_token_embedding": r_e,
-                    "gt_task_label": gt_labels[id]
+                    "gt_task_label": gt_labels[int(id.item())]
                 })
 
         return sp_tokens_embeddings
