@@ -25,7 +25,6 @@ model:
   rudolph_weight: weights/RuDOLPH-350M-v2/pytorch_model.bin
   vae:
     dwt: false
-    device: 'cuda'
   params:
     num_layers: 24
     hidden_size: 1024
