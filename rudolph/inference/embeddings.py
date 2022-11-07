@@ -30,7 +30,6 @@ class EmbeddingsGenerator:
         self.vae = vae if vae is not None else get_vae(dwt=False).to(self.device)
         self.model = model if model is not None else get_rudolph_model('350M', fp16=False, device=self.device)
         self.vocab_size = self.model.get_param('vocab_size')
-        self.loader = self._get_dataloader(task_name='captioning')
         self.api = ruDolphApi(self.model, self.tokenizer, self.vae, bs=12)
 
     def _get_dataloader(self, task_name: str) -> DataLoader:
@@ -67,15 +66,17 @@ class EmbeddingsGenerator:
         print(f"Dataloader size: {len(loader)} with batch size: {self.config.bs}")
         return loader
 
-    def generate_sp_tokens_embeddings(self):
+    def generate_sp_tokens_embeddings(self, task_name: str = 'captioning'):
+        loader = self._get_dataloader(task_name=task_name)
+
         vocab = self.tokenizer.tokenizer.vocab()
         allowed_token_ids = []
         for i, token in enumerate(vocab):
             allowed_token_ids.append(i)
 
         sp_tokens_embeddings = []
-        gt_labels = self.loader.dataset.labels
-        for batch in tqdm(self.loader):
+        gt_labels = loader.dataset.labels
+        for batch in tqdm(loader):
             ids_question, left_text, images = batch
             left_text = left_text.to(self.device)
             images = images.to(self.device)
@@ -83,7 +84,7 @@ class EmbeddingsGenerator:
 
             # Generate right texts
             l_lhs, r_lhs = self.api.generate_special_tokens_embeddings(image_tokens, left_text, self.vocab_size,
-                                                              template='', special_token='<RT_UNK>')
+                                                                       template='', special_token='<RT_UNK>')
 
             # Save predictions to dict
             for id, l_e, r_e in zip(ids_question, l_lhs, r_lhs):
