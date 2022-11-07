@@ -32,16 +32,19 @@ class EmbeddingsGenerator:
         self.vocab_size = self.model.get_param('vocab_size')
         self.api = ruDolphApi(self.model, self.tokenizer, self.vae, bs=12)
 
-    def _get_dataloader(self, task_name: str) -> DataLoader:
+    def _get_dataloader(self, task_name: str, df: pd.DataFrame = None) -> DataLoader:
         task_config = self.config['data'][task_name]
-        df = create_dataset('captioning',
-                            dataset_path=task_config['dataset_path'],
-                            train_input=task_config['train_input'],
-                            train_output=task_config['train_output'],
-                            val_input=task_config['val_input'],
-                            val_output=task_config['val_output'])
+        if df is None:
+            df = create_dataset('captioning',
+                                dataset_path=task_config['dataset_path'],
+                                train_input=task_config['train_input'],
+                                train_output=task_config['train_output'],
+                                val_input=task_config['val_input'],
+                                val_output=task_config['val_output'])
 
-        df = pd.DataFrame(df)
+            df = pd.DataFrame(df)
+        else:
+            print(f"Loaded pre-defined dataset...")
         print(f"Image captioning data: {df.shape}\n")
 
         # Datasets creation (requires tokenizer definition)
@@ -66,8 +69,8 @@ class EmbeddingsGenerator:
         print(f"Dataloader size: {len(loader)} with batch size: {self.config.bs}")
         return loader
 
-    def generate_sp_tokens_embeddings(self, task_name: str = 'captioning'):
-        loader = self._get_dataloader(task_name=task_name)
+    def generate_sp_tokens_embeddings(self, task_name: str = 'captioning', df: pd.DataFrame = None):
+        loader = self._get_dataloader(task_name=task_name, df=df)
 
         vocab = self.tokenizer.tokenizer.vocab()
         allowed_token_ids = []
