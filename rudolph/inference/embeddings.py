@@ -93,8 +93,8 @@ class EmbeddingsGenerator:
             for id, l_e, r_e in zip(ids_question, l_lhs, r_lhs):
                 sp_tokens_embeddings.append({
                     "id": id.item(),
-                    "left_sp_token_embedding": l_e,
-                    "right_sp_token_embedding": r_e,
+                    "left_sp_token_embedding": l_e.numpy(),
+                    "right_sp_token_embedding": r_e.numpy(),
                     "gt_task_label": gt_labels[int(id.item())]
                 })
 
