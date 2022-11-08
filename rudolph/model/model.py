@@ -51,8 +51,10 @@ class ruDolphModel(torch.nn.Module):
         self.last_kernel_size = last_kernel_size
         # tasks
         self.tasks = tasks
-        self.l_sp_token_mapping = {DEFAULT_SPC_TOKENS.get(tokens_mapping.get(task)[0]): i for i, task in enumerate(self.tasks)}
-        self.r_sp_token_mapping = {DEFAULT_SPC_TOKENS.get(tokens_mapping.get(task)[1]): i for i, task in enumerate(self.tasks)}
+        self.l_sp_token_mapping = {DEFAULT_SPC_TOKENS.get(tokens_mapping.get(task)[0]): i for i, task in
+                                   enumerate(self.tasks)}
+        self.r_sp_token_mapping = {DEFAULT_SPC_TOKENS.get(tokens_mapping.get(task)[1]): i for i, task in
+                                   enumerate(self.tasks)}
         init_method = init_method_normal(std=0.02)
 
         self.text_embeddings = torch.nn.Embedding(vocab_size, hidden_size)
@@ -121,17 +123,17 @@ class ruDolphModel(torch.nn.Module):
         return self.image_row_embeddings(row_ids) + self.image_col_embeddings(col_ids)
 
     def forward(
-        self,
-        input_ids,
-        attention_mask,
-        return_loss=False,
-        use_cache=False,
-        cache=None,
-        lt_loss_weight=1,
-        img_loss_weight=7,
-        rt_loss_weight=1,
-        sp_loss_weight=0,  # special tokens loss weight
-        return_hidden_states=False,
+            self,
+            input_ids,
+            attention_mask,
+            return_loss=False,
+            use_cache=False,
+            cache=None,
+            lt_loss_weight=1,
+            img_loss_weight=7,
+            rt_loss_weight=1,
+            sp_loss_weight=0,  # special tokens loss weight
+            return_hidden_states=False,
     ):
         device = input_ids.device
         l_text = input_ids[:, :self.l_text_seq_length]  # of size: [bs, 64]
@@ -180,17 +182,21 @@ class ruDolphModel(torch.nn.Module):
             gradient_checkpointing=self.gradient_checkpointing
         )
         # transformer_output => output embeddings of size: [bs, 384, 1024]
-        # l_sp_logits of size: [bs, 2]
-        l_sp_logits = self.l_sp_token_clf_head(transformer_output[:, 1, :])
-        # l_sp_labels of size: [bs, 2]
-        l_sp_labels = l_text[:, 1]
-        # for token in l_sp_labels:
-        #     print(token)
-        l_sp_labels = [self.l_sp_token_mapping.get(int(token.item())) for token in l_sp_labels]
-        l_sp_labels = torch.stack(l_sp_labels)
-        if use_r_text:
-            r_sp_logits = self.l_sp_token_clf_head(transformer_output[:, -(self.r_text_seq_length-1), :])
-            r_sp_labels = torch.stack([self.r_sp_token_mapping.get(int(token.item())) for token in r_text[:, 1]])
+        if use_special_tokens:
+            # l_sp_logits of size: [bs, 2]
+            l_sp_logits = self.l_sp_token_clf_head(transformer_output[:, 1, :])
+            # l_sp_labels of size: [bs, 2]
+            l_sp_labels = l_text[:, 1]
+            l_sp_labels = torch.stack([
+                torch.Tensor([self.l_sp_token_mapping.get(int(token.item()))])
+                for token in l_sp_labels]
+            ).squeeze().long()
+            if use_r_text:
+                r_sp_logits = self.l_sp_token_clf_head(transformer_output[:, -(self.r_text_seq_length - 1), :])
+                r_sp_labels = torch.stack([
+                    torch.Tensor([self.r_sp_token_mapping.get(int(token.item()))])
+                    for token in r_text[:, 1]]
+                ).squeeze().long()
 
         # logits of size: [bs, 384, vocab_size], vocab_size = 25408
         logits = self.to_logits(transformer_output)
@@ -203,8 +209,8 @@ class ruDolphModel(torch.nn.Module):
         logits = rearrange(logits, 'b n c -> b c n')
         # l_text_logits of size: [bs, 16832, 64]
         l_text_logits = logits[
-            :, :self.vocab_size, :self.l_text_seq_length if use_image else self.l_text_seq_length-1
-        ].contiguous().float()
+                        :, :self.vocab_size, :self.l_text_seq_length if use_image else self.l_text_seq_length - 1
+                        ].contiguous().float()
         # labels of size: [bs, 63] -> exclude bos token
         labels = [l_text[:, 1:]]
         if use_image:
@@ -231,7 +237,7 @@ class ruDolphModel(torch.nn.Module):
         )
         loss_values['l_text_loss'] = loss_l_text.data.detach().float()
         if lt_loss_weight:
-            loss += loss_l_text*lt_loss_weight
+            loss += loss_l_text * lt_loss_weight
             loss_weights += lt_loss_weight
 
         # Image loss
@@ -242,14 +248,14 @@ class ruDolphModel(torch.nn.Module):
             )
             loss_values['image_loss'] = loss_img.data.detach().float()
             if img_loss_weight:
-                loss += loss_img*img_loss_weight
+                loss += loss_img * img_loss_weight
                 loss_weights += img_loss_weight
 
         # Right text loss
         if use_r_text:
             loss_r_text = F.cross_entropy(
                 r_text_logits,
-                r_sp_labels,
+                labels[:, -(self.r_text_seq_length-1):],
                 ignore_index=0,
             )
             loss_values['r_text_loss'] = loss_r_text.data.detach().float()
@@ -260,15 +266,13 @@ class ruDolphModel(torch.nn.Module):
         # Special tokens loss
         if use_special_tokens:
             loss_l_sp_token = F.cross_entropy(
-                l_sp_logits,
-                l_sp_labels,
-                ignore_index=0,
+                l_sp_logits,  # of size: [bs, len(tasks)] == [bs, 2]
+                l_sp_labels,  # of size: [bs, 1]
             )
             if use_r_text:
                 loss_r_sp_token = F.cross_entropy(
                     r_sp_logits,
-                    labels[:, -(self.r_text_seq_length - 1)],
-                    ignore_index=0,
+                    r_sp_labels
                 )
             loss_sp_tokens = loss_l_sp_token + loss_r_sp_token
             loss_values['loss_sp_tokens'] = loss_sp_tokens.data.detach().float()
