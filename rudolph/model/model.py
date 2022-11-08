@@ -187,16 +187,16 @@ class ruDolphModel(torch.nn.Module):
             l_sp_logits = self.l_sp_token_clf_head(transformer_output[:, 1, :])
             # l_sp_labels of size: [bs, 2]
             l_sp_labels = l_text[:, 1]
-            l_sp_labels = torch.stack([
+            l_sp_labels = torch.cat([
                 torch.Tensor([self.l_sp_token_mapping.get(int(token.item()))])
                 for token in l_sp_labels]
-            ).squeeze().long()
+            ).long().to(self.device)
             if use_r_text:
                 r_sp_logits = self.l_sp_token_clf_head(transformer_output[:, -(self.r_text_seq_length - 1), :])
-                r_sp_labels = torch.stack([
+                r_sp_labels = torch.cat([
                     torch.Tensor([self.r_sp_token_mapping.get(int(token.item()))])
                     for token in r_text[:, 1]]
-                ).squeeze().long()
+                ).long().to(self.device)
 
         # logits of size: [bs, 384, vocab_size], vocab_size = 25408
         logits = self.to_logits(transformer_output)
