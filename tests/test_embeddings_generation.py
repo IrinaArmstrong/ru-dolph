@@ -29,7 +29,8 @@ class TestSpTokensEmbeddings(unittest.TestCase):
         self.device = self.config['model'].rudolph.device
         self.tokenizer = get_tokenizer()
         self.vae = get_vae(dwt=False).to(self.device)
-        self.model = get_rudolph_model('350M', fp16=False, device=self.device)
+        self.model = get_rudolph_model('350M', fp16=False, device=self.device,
+                                       num_tasks=self.config['model']['params']['num_tasks'])
         self.vocab_size = self.model.get_param('vocab_size')
         self.loader = self._get_dataloader(task_name='captioning')
         self.api = ruDolphApi(self.model, self.tokenizer, self.vae, bs=12)

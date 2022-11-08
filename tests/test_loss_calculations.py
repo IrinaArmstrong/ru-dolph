@@ -28,7 +28,8 @@ class TestLossCalculation(unittest.TestCase):
         self.device = self.config['model'].rudolph.device
         self.tokenizer = get_tokenizer()
         self.vae = get_vae(dwt=False).to(self.device)
-        self.model = get_rudolph_model('350M', fp16=False, device=self.device)
+        self.model = get_rudolph_model('350M', fp16=False, device=self.device,
+                                       tasks=self.config['model']['params']['tasks'])
         self.loader = self._get_dataloader(task_name='captioning')
 
     def _get_dataloader(self, task_name: str) -> DataLoader:

@@ -66,7 +66,8 @@ class TrainDatasetRetriever(Dataset):
         left_text = left_text.lower().strip()
         left_encoded_text = self.encode_text(left_text, text_seq_length=self.model_params.l_text_seq_length)
         # randomly mask 25% of left text special tokens with '<LT_UNK>'
-        left_special_token = random.choices([self.tokens_mapping[task_id][0], '<LT_UNK>'], weights=[0.75, 0.25])[0]
+        # left_special_token = random.choices([self.tokens_mapping[task_id][0], '<LT_UNK>'], weights=[0.75, 0.25])[0]
+        left_special_token = self.tokens_mapping[task_id][0]
         left_encoded_text[torch.where(left_encoded_text == self.spc_id)] = self.spc_tokens[left_special_token]
 
         if self.image_paths[idx]:
@@ -81,7 +82,8 @@ class TrainDatasetRetriever(Dataset):
             right_text = right_text.lower().strip()
             right_encoded_text = self.encode_text(right_text, text_seq_length=self.model_params.r_text_seq_length)
             # randomly mask 25% of right text special tokens with '<LT_UNK>'
-            right_special_token = random.choices([self.tokens_mapping[task_id][1], '<RT_UNK>'], weights=[0.75, 0.25])[0]
+            # right_special_token = random.choices([self.tokens_mapping[task_id][1], '<RT_UNK>'], weights=[0.75, 0.25])[0]
+            right_special_token = self.tokens_mapping[task_id][1]
             right_encoded_text[torch.where(right_encoded_text == self.spc_id)] = self.spc_tokens[right_special_token]
         else:
             right_encoded_text = torch.zeros(self.model_params.r_text_seq_length, dtype=torch.int32)

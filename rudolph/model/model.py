@@ -2,9 +2,11 @@
 import torch
 import torch.nn.functional as F
 from einops import rearrange
+from typing import List
 
 from .utils import init_method_normal
 from .transformer import SparseTransformer
+from rudolph.train.train_dataloader import DEFAULT_SPC_TOKENS, tokens_mapping
 
 
 class ruDolphModel(torch.nn.Module):
@@ -17,6 +19,7 @@ class ruDolphModel(torch.nn.Module):
                  embedding_dropout_prob,
                  attention_dropout_prob,
                  output_dropout_prob,
+                 tasks: List[str],
                  l_text_seq_length=64,
                  r_text_seq_length=64,
                  kernel_size=7,
@@ -46,6 +49,10 @@ class ruDolphModel(torch.nn.Module):
         self.gradient_checkpointing = gradient_checkpointing
         self.kernel_size = kernel_size
         self.last_kernel_size = last_kernel_size
+        # tasks
+        self.tasks = tasks
+        self.l_sp_token_mapping = {DEFAULT_SPC_TOKENS.get(tokens_mapping.get(task)[0]): i for i, task in enumerate(self.tasks)}
+        self.r_sp_token_mapping = {DEFAULT_SPC_TOKENS.get(tokens_mapping.get(task)[1]): i for i, task in enumerate(self.tasks)}
         init_method = init_method_normal(std=0.02)
 
         self.text_embeddings = torch.nn.Embedding(vocab_size, hidden_size)
@@ -64,6 +71,16 @@ class ruDolphModel(torch.nn.Module):
         self.to_logits = torch.nn.Sequential(
             torch.nn.LayerNorm(hidden_size),
             torch.nn.Linear(hidden_size, self.total_vocab_size),
+        )
+
+        self.l_sp_token_clf_head = torch.nn.Sequential(
+            torch.nn.LayerNorm(hidden_size),
+            torch.nn.Linear(hidden_size, len(self.tasks)),
+        )
+
+        self.r_sp_token_clf_head = torch.nn.Sequential(
+            torch.nn.LayerNorm(hidden_size),
+            torch.nn.Linear(hidden_size, len(self.tasks)),
         )
 
         # Embeddings dropout
@@ -163,7 +180,19 @@ class ruDolphModel(torch.nn.Module):
             gradient_checkpointing=self.gradient_checkpointing
         )
         # transformer_output => output embeddings of size: [bs, 384, 1024]
-        # logits of size: [bs, vocab_size, 384], vocab_size = 25408
+        # l_sp_logits of size: [bs, 2]
+        l_sp_logits = self.l_sp_token_clf_head(transformer_output[:, 1, :])
+        # l_sp_labels of size: [bs, 2]
+        l_sp_labels = l_text[:, 1]
+        # for token in l_sp_labels:
+        #     print(token)
+        l_sp_labels = [self.l_sp_token_mapping.get(int(token.item())) for token in l_sp_labels]
+        l_sp_labels = torch.stack(l_sp_labels)
+        if use_r_text:
+            r_sp_logits = self.l_sp_token_clf_head(transformer_output[:, -(self.r_text_seq_length-1), :])
+            r_sp_labels = torch.stack([self.r_sp_token_mapping.get(int(token.item())) for token in r_text[:, 1]])
+
+        # logits of size: [bs, 384, vocab_size], vocab_size = 25408
         logits = self.to_logits(transformer_output)
         if return_loss is False:
             outputs = (logits, present_cache)
@@ -220,7 +249,7 @@ class ruDolphModel(torch.nn.Module):
         if use_r_text:
             loss_r_text = F.cross_entropy(
                 r_text_logits,
-                labels[:, -(self.r_text_seq_length-1):],
+                r_sp_labels,
                 ignore_index=0,
             )
             loss_values['r_text_loss'] = loss_r_text.data.detach().float()
@@ -230,20 +259,17 @@ class ruDolphModel(torch.nn.Module):
 
         # Special tokens loss
         if use_special_tokens:
-            # l_sp_logit = l_text_logits[:, :, 0]
-            # l_sp_label = labels[:, 0]
             loss_l_sp_token = F.cross_entropy(
-                l_text_logits[:, :, 0],
-                labels[:, 0],
+                l_sp_logits,
+                l_sp_labels,
                 ignore_index=0,
             )
-            # r_sp_logit = r_text_logits[:, :, 0]
-            # r_sp_label = labels[:, -(self.r_text_seq_length - 1)]
-            loss_r_sp_token = F.cross_entropy(
-                r_text_logits[:, :, 0],
-                labels[:, -(self.r_text_seq_length - 1)],
-                ignore_index=0,
-            )
+            if use_r_text:
+                loss_r_sp_token = F.cross_entropy(
+                    r_sp_logits,
+                    labels[:, -(self.r_text_seq_length - 1)],
+                    ignore_index=0,
+                )
             loss_sp_tokens = loss_l_sp_token + loss_r_sp_token
             loss_values['loss_sp_tokens'] = loss_sp_tokens.data.detach().float()
             loss += loss_sp_tokens * sp_loss_weight

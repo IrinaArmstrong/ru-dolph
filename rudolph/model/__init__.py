@@ -7,9 +7,7 @@ from huggingface_hub import hf_hub_url, cached_download
 from .model import ruDolphModel
 from .fp16 import FP16Module
 
-
 __all__ = ['ruDolphModel', 'FP16Module', 'get_rudolph_model']
-
 
 MODELS = {
     '350M': dict(
@@ -168,7 +166,7 @@ def get_rudolph_model(name, pretrained=True, fp16=False, device='cpu', cache_dir
         config_file_url = hf_hub_url(repo_id=config['repo_id'], filename=config['filename'])
         cached_download(config_file_url, cache_dir=cache_dir, force_filename=config['filename'])
         checkpoint = torch.load(os.path.join(cache_dir, config['filename']), map_location='cpu')
-        model.load_state_dict(checkpoint)
+        model.load_state_dict(checkpoint, strict=False)
     if fp16:
         model = FP16Module(model)
     model.eval()
