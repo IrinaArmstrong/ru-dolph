@@ -192,7 +192,7 @@ class ruDolphModel(torch.nn.Module):
                 for token in l_sp_labels]
             ).long().to(self.device)
             if use_r_text:
-                r_sp_logits = self.l_sp_token_clf_head(transformer_output[:, -(self.r_text_seq_length - 1), :])
+                r_sp_logits = self.r_sp_token_clf_head(transformer_output[:, -(self.r_text_seq_length - 1), :])
                 r_sp_labels = torch.cat([
                     torch.Tensor([self.r_sp_token_mapping.get(int(token.item()))])
                     for token in r_text[:, 1]]
