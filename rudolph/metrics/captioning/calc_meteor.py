@@ -1,9 +1,11 @@
-from metrics.rumeteor import meteor_score
-import numpy as np
-from ruwordnet import RuWordNet
 import nltk
+import numpy as np
 import wordtodigits as w2d
-from metrics.utils import postprocess
+from ruwordnet import RuWordNet
+
+from rudolph.metrics.captioning.utils import postprocess
+from rudolph.metrics.captioning.rumeteor import meteor_score
+
 
 nltk.download('punkt')
 nltk.download('averaged_perceptron_tagger')

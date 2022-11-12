@@ -1,9 +1,11 @@
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 
 from PIL import Image
 import torchvision.transforms as T
 from torch.nn.utils.rnn import pad_sequence
+from typing import List, Dict, Optional, Union
 
 import youtokentome as yttm
 
@@ -21,10 +23,16 @@ DEFAULT_SPC_TOKENS = {
 class InferenceDatasetRetriever(Dataset):
     spc_id = -1
 
-    def __init__(self, left_text, image_path, ids, tokenizer, model_params, labels = None):
+    def __init__(self, left_text: Union[List[str], np.ndarray],
+                 image_path: Union[List[str], np.ndarray],
+                 ids: Union[List[int], np.ndarray],
+                 tokenizer, model_params,
+                 labels: Optional[Union[List[str], np.ndarray]] = None,
+                 right_texts: Optional[Union[List[str], np.ndarray]] = None):
         self.ids = ids
         self.left_text = left_text
         self.labels = labels
+        self.right_texts = right_texts
         self.image_path = image_path
         self.tokenizer = tokenizer
         self.model_params = model_params
@@ -61,7 +69,12 @@ class InferenceDatasetRetriever(Dataset):
         else:
             image = torch.zeros((3, self.image_size, self.image_size), dtype=torch.float32)
 
-        return self.ids[idx], left_encoded_text, image
+        targets_info = {}
+        if self.labels is not None:
+            targets_info['label'] = self.labels[idx]
+        if self.right_texts is not None:
+            targets_info['right_text'] = self.right_texts[idx]
+        return self.ids[idx], left_encoded_text, image, targets_info
 
     def encode_text(self, text, text_seq_length):
         """
@@ -77,27 +90,33 @@ class InferenceDatasetRetriever(Dataset):
         tokens = bos + tokens + [self.tokenizer.eos_id]
         return self.tokenizer.prepare_tokens(tokens, text_seq_length)
 
-    def decode_text(self, encoded, ignore_ids):
+    def decode_text(self, encoded, ignore_ids: Optional[List[int]] = None):
         """
         Decode tokens sequence to text string.
         """
+        ignore_ids = ignore_ids if ignore_ids is not None else self.decode_ignore_ids
         return self.tokenizer.tokenizer.decode(encoded.cpu().numpy().tolist(),
-                                               ignore_ids=self.decode_ignore_ids)[0]
+                                               ignore_ids=ignore_ids)[0]
 
 
 def fb_collate_fn(batch):
     """
     Reduced task number collate fn
     """
-    ids, left_texts, images = [], [], []
+    ids, left_texts_ids, images = [], [], []
+    labels, right_texts = [], []
 
     for i, sample in enumerate(batch):
         ids.append(sample[0])
-        left_texts.append(sample[1])
+        left_texts_ids.append(sample[1])
         images.append(sample[2])
+        if "label" in sample[3].keys():
+            labels.append(sample[3].get('label'))
+        if "right_text" in sample[3].keys():
+            right_texts.append(sample[3].get('right_text'))
 
     ids = torch.Tensor(ids)
-    left_texts = pad_sequence(left_texts, batch_first=True)
+    left_texts_ids = pad_sequence(left_texts_ids, batch_first=True)
     images = torch.stack(images)
 
-    return ids, left_texts, images
+    return ids, left_texts_ids, images, labels, right_texts

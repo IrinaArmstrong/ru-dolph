@@ -12,7 +12,6 @@ import youtokentome as yttm
 import torch.nn.functional as F
 import torchvision.transforms as T
 
-
 DEFAULT_SPC_TOKENS = {
     '<LT_UNK>': 16384,
     '<RT_UNK>': 16385,
@@ -168,7 +167,7 @@ class ruDolphApi:
 
             cache = None
             outputs = self.model(out, attention_mask, cache=cache, use_cache=use_cache,
-                                         return_loss=False, return_hidden_states=True)
+                                 return_loss=False, return_hidden_states=True)
             # outputs - 3 tensors:
             # logits of size: [bs, input_seq_len==322, vocab_size==25408]
             # cache
@@ -195,8 +194,6 @@ class ruDolphApi:
 
         template_encoded = template_encoded[:template_size]
         template_encoded[torch.where(template_encoded == self.spc_id)] = self.spc_tokens[special_token]
-
-        print('Decoded sequence', self.decode_text(template_encoded))
 
         with torch.no_grad():
             attention_mask = self.get_attention_mask(chunk_bs)
