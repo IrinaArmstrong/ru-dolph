@@ -1,12 +1,7 @@
 import ruclip
-import pandas as pd
 from PIL import Image
-import os
 import torch
-import numpy as np 
-import cv2
-import ast
-
+import numpy as np
 
 device = 'cuda'
 clip, processor = ruclip.load('ruclip-vit-large-patch14-336', device=device)
