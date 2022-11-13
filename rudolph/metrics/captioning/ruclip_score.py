@@ -3,8 +3,8 @@ from PIL import Image
 import torch
 import numpy as np
 
-device = 'cuda'
-clip, processor = ruclip.load('ruclip-vit-large-patch14-336', device=device)
+device = 'cpu'
+clip, processor = ruclip.load("ruclip-vit-base-patch16-224", device=device)  #'ruclip-vit-large-patch14-336'
 clip_predictor = ruclip.Predictor(clip, processor, device, bs=8, quiet=True)
 
 

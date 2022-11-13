@@ -1,15 +1,12 @@
-from itertools import chain, product
 from typing import Callable, Iterable, List, Tuple
-
 from nltk.corpus import WordNetCorpusReader
-from nltk.stem.api import StemmerI
 from nltk.stem.porter import *
 
 
 def _generate_enums(
-    hypothesis: Iterable[str],
-    reference: Iterable[str],
-    preprocess: Callable[[str], str] = str.lower,
+        hypothesis: Iterable[str],
+        reference: Iterable[str],
+        preprocess: Callable[[str], str] = str.lower,
 ) -> Tuple[List[Tuple[int, str]], List[Tuple[int, str]]]:
     """
     Takes in pre-tokenized inputs for hypothesis and reference and returns
@@ -36,7 +33,7 @@ def _generate_enums(
 
 
 def exact_match(
-    hypothesis: Iterable[str], reference: Iterable[str]
+        hypothesis: Iterable[str], reference: Iterable[str]
 ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, str]], List[Tuple[int, str]]]:
     """
     matches exact words in hypothesis and reference
@@ -52,10 +49,9 @@ def exact_match(
     return _match_enums(enum_hypothesis_list, enum_reference_list)
 
 
-
 def _match_enums(
-    enum_hypothesis_list: List[Tuple[int, str]],
-    enum_reference_list: List[Tuple[int, str]],
+        enum_hypothesis_list: List[Tuple[int, str]],
+        enum_reference_list: List[Tuple[int, str]],
 ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, str]], List[Tuple[int, str]]]:
     """
     matches exact words in hypothesis and reference and returns
@@ -81,9 +77,9 @@ def _match_enums(
 
 
 def _enum_stem_match(
-    enum_hypothesis_list: List[Tuple[int, str]],
-    enum_reference_list: List[Tuple[int, str]],
-    stemmer: StemmerI = PorterStemmer(),
+        enum_hypothesis_list: List[Tuple[int, str]],
+        enum_reference_list: List[Tuple[int, str]],
+        stemmer: StemmerI = PorterStemmer(),
 ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, str]], List[Tuple[int, str]]]:
     """
     Stems each word and matches them in hypothesis and reference
@@ -109,9 +105,9 @@ def _enum_stem_match(
 
 
 def stem_match(
-    hypothesis: Iterable[str],
-    reference: Iterable[str],
-    stemmer: StemmerI = PorterStemmer(),
+        hypothesis: Iterable[str],
+        reference: Iterable[str],
+        stemmer: StemmerI = PorterStemmer(),
 ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, str]], List[Tuple[int, str]]]:
     """
     Stems each word and matches them in hypothesis and reference
@@ -127,11 +123,10 @@ def stem_match(
     return _enum_stem_match(enum_hypothesis_list, enum_reference_list, stemmer=stemmer)
 
 
-
 def _enum_wordnetsyn_match(
-    enum_hypothesis_list: List[Tuple[int, str]],
-    enum_reference_list: List[Tuple[int, str]],
-    wordnet: WordNetCorpusReader,
+        enum_hypothesis_list: List[Tuple[int, str]],
+        enum_reference_list: List[Tuple[int, str]],
+        wordnet: WordNetCorpusReader,
 ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, str]], List[Tuple[int, str]]]:
     """
     Matches each word in reference to a word in hypothesis
@@ -145,22 +140,22 @@ def _enum_wordnetsyn_match(
     word_match = []
     for i in range(len(enum_hypothesis_list))[::-1]:
         word = wordnet.get_senses(enum_hypothesis_list[i][1])
-        if word:    
+        if word:
             hypothesis_syns = set(
-                    (
-                        synset.title.lower()
-                        for i in range(len(word))
-                        for synset in word[i].synset.hypernyms 
-                    )
+                (
+                    synset.title.lower()
+                    for i in range(len(word))
+                    for synset in word[i].synset.hypernyms
+                )
             ).union({enum_hypothesis_list[i][1]})
             hypothesis_syns = set(
-                    (                 
-                        synset.name.lower()
-                        for i in range(len(word))
-                        for synset in word[i].derivations 
-                    )
+                (
+                    synset.name.lower()
+                    for i in range(len(word))
+                    for synset in word[i].derivations
+                )
             ).union(hypothesis_syns)
-#             print('hypothesis_syns', hypothesis_syns)
+            #             print('hypothesis_syns', hypothesis_syns)
             for j in range(len(enum_reference_list))[::-1]:
                 if enum_reference_list[j][1] in hypothesis_syns:
                     word_match.append(
@@ -169,14 +164,14 @@ def _enum_wordnetsyn_match(
                     enum_hypothesis_list.pop(i)
                     enum_reference_list.pop(j)
                     break
-#     print('enum_hypothesis_list', enum_hypothesis_list, 'enum_reference_list', enum_reference_list)
+    #     print('enum_hypothesis_list', enum_hypothesis_list, 'enum_reference_list', enum_reference_list)
     return word_match, enum_hypothesis_list, enum_reference_list
 
 
 def wordnetsyn_match(
-    hypothesis: Iterable[str],
-    reference: Iterable[str],
-    wordnet: WordNetCorpusReader,
+        hypothesis: Iterable[str],
+        reference: Iterable[str],
+        wordnet: WordNetCorpusReader,
 ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, str]], List[Tuple[int, str]]]:
     """
     Matches each word in reference to a word in hypothesis if any synonym
@@ -193,12 +188,11 @@ def wordnetsyn_match(
     )
 
 
-
 def _enum_align_words(
-    enum_hypothesis_list: List[Tuple[int, str]],
-    enum_reference_list: List[Tuple[int, str]],
-    wordnet: WordNetCorpusReader,
-    stemmer: StemmerI = PorterStemmer(),
+        enum_hypothesis_list: List[Tuple[int, str]],
+        enum_reference_list: List[Tuple[int, str]],
+        wordnet: WordNetCorpusReader,
+        stemmer: StemmerI = PorterStemmer(),
 ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, str]], List[Tuple[int, str]]]:
     """
     Aligns/matches words in the hypothesis to reference by sequentially
@@ -236,10 +230,10 @@ def _enum_align_words(
 
 
 def align_words(
-    hypothesis: Iterable[str],
-    reference: Iterable[str],
-    wordnet: WordNetCorpusReader,
-    stemmer: StemmerI = PorterStemmer(),
+        hypothesis: Iterable[str],
+        reference: Iterable[str],
+        wordnet: WordNetCorpusReader,
+        stemmer: StemmerI = PorterStemmer(),
 ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, str]], List[Tuple[int, str]]]:
     """
     Aligns/matches words in the hypothesis to reference by sequentially
@@ -259,7 +253,6 @@ def align_words(
     )
 
 
-
 def _count_chunks(matches: List[Tuple[int, int]]) -> int:
     """
     Counts the fewest possible number of chunks such that matched unigrams
@@ -273,7 +266,7 @@ def _count_chunks(matches: List[Tuple[int, int]]) -> int:
     chunks = 1
     while i < len(matches) - 1:
         if (matches[i + 1][0] == matches[i][0] + 1) and (
-            matches[i + 1][1] == matches[i][1] + 1
+                matches[i + 1][1] == matches[i][1] + 1
         ):
             i += 1
             continue
@@ -283,14 +276,14 @@ def _count_chunks(matches: List[Tuple[int, int]]) -> int:
 
 
 def single_meteor_score(
-    reference: Iterable[str],
-    hypothesis: Iterable[str],
-    wordnet: WordNetCorpusReader,
-    preprocess: Callable[[str], str] = str.lower,
-    stemmer: StemmerI = PorterStemmer(),
-    alpha: float = 0.9,
-    beta: float = 3.0,
-    gamma: float = 0.5,
+        reference: Iterable[str],
+        hypothesis: Iterable[str],
+        wordnet: WordNetCorpusReader,
+        preprocess: Callable[[str], str] = str.lower,
+        stemmer: StemmerI = PorterStemmer(),
+        alpha: float = 0.9,
+        beta: float = 3.0,
+        gamma: float = 0.5,
 ) -> float:
     """
     Calculates METEOR score for single hypothesis and reference as per
@@ -347,16 +340,15 @@ def single_meteor_score(
     return (1 - penalty) * fmean
 
 
-
 def meteor_score(
-    references: Iterable[Iterable[str]],
-    hypothesis: Iterable[str],
-    wordnet: WordNetCorpusReader,
-    preprocess: Callable[[str], str] = str.lower,
-    stemmer: StemmerI = PorterStemmer(),
-    alpha: float = 0.9,
-    beta: float = 3.0,
-    gamma: float = 0.5,
+        references: Iterable[Iterable[str]],
+        hypothesis: Iterable[str],
+        wordnet: WordNetCorpusReader,
+        preprocess: Callable[[str], str] = str.lower,
+        stemmer: StemmerI = PorterStemmer(),
+        alpha: float = 0.9,
+        beta: float = 3.0,
+        gamma: float = 0.5,
 ) -> float:
     """
     Calculates METEOR score for hypothesis with multiple references as

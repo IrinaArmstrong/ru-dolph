@@ -71,7 +71,7 @@ def remove_punc(text):
     return "".join(ch for ch in text if ch not in exclude).lower()
 
 
-def calc_meteor(true_json, pred_json):
+def calculate_meteor(true_json, pred_json):
     scores = []
     for key in pred_json:
         hyps = pred_json[key]
