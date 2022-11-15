@@ -67,16 +67,16 @@ class Estimator:
         print(f"METEOR score for Captioning: {round(meteor_score, 3)}")
 
         # RuCLIP
-        # if images_folder is not None:
-        #     clip_score = calc_ruclip_metric(gt_filename, pred_filename, image_folder=images_folder)
-        #     print(f"ruCLIP score for Captioning: {round(clip_score, 3)}")
-        #     return (meteor_score + clip_score) / 2
+        if images_folder is not None:
+            clip_score = calc_ruclip_metric(gt_filename, pred_filename, image_folder=images_folder)
+            print(f"ruCLIP score for Captioning: {round(clip_score, 3)}")
+            return (meteor_score + clip_score) / 2
         return meteor_score
 
     def estimate_vqa(self, pred_filename: str, gt_filename: str = None,
                      single_file: bool = True):
         """
-        Calculate METEOR and RuCLIP score for VQA task.
+        Calculate METEOR score for VQA task.
         """
         pred_data = _get_data(pred_filename)
         if single_file:
@@ -95,6 +95,6 @@ class Estimator:
 if __name__ == '__main__':
     root_dir = Path().resolve().parent.parent.parent
     results_path = root_dir / "outputs" / "results_2tasks"
-    cap_pred_filename = results_path / "no_sp_loss_2tasks_1epoch_preds_test_data_task-captioning.json"
+    cap_pred_filename = results_path / "sp_loss_2tasks_1epoch_preds_test_data_task-captioning.json"
     estimator = Estimator()
     estimator.estimate_captioning(str(cap_pred_filename))
